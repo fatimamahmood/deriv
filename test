@@ -1,0 +1,16 @@
+#!/bin/bash
+
+./deriv "( 6 )" x
+echo "Expected result is: \n0\n\n"
+
+./deriv "( 5 + x )" x
+echo "Expected result is: \n(0)+(1)\n\n"
+
+./deriv "( x ^ 3 )" x
+echo "Expected result is: \n((3)*((x)^(2)))*(1)\n\n"
+
+./deriv "( cos ( x ) )" x
+echo "Expected result is: \n(-(sin(x)))*(1)\n\n"
+
+./deriv "( sin ( exp ( x * y ) ) )" x
+echo "Expected result is: \n(cos(exp((x)*(y))))*((((1)*(y))+((x)*(0)))*(exp((x)*(y))))\n\n"
