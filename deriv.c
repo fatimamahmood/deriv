@@ -1,6 +1,7 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include<string.h>
+#include<math.h>
 #include "deriv.h"
 
 void print(NodePtr node) {
@@ -339,14 +340,17 @@ enum Unary_op To_Unary_op(enum Op op) {
     return conv_op;
 }
 
-void handle_token(char * start, int len, struct Stack * stack, struct Op_Stack * op_stack) {
+void handle_token(char * start, int len, struct Stack * stack, struct Op_Stack * op_stack, int * open_paren) {
+    // this gets set to 1 if token is an open parenthesis
+    int new_open_paren = 0;
+
     // operations
-    if (strncmp(start, "+", 1) == 0) {
+    if (start[0] == '+') {
         // printf("found special PLUS symbol\n");
         push_op(op_stack, PLUS); 
     }
-    else if (strncmp(start, "-", 1) == 0) { // distinguish between minus and neg
-        if (op_stack->depth > 0 && op_stack->elements[stack->depth - 1] == OPAR) {
+    else if (start[0] == '-') { // distinguish between minus and neg
+        if (* open_paren == 1) {
             // printf("found special NEG symbol\n");
             push_op(op_stack, NEG);
         }
@@ -355,15 +359,15 @@ void handle_token(char * start, int len, struct Stack * stack, struct Op_Stack *
             push_op(op_stack, MINUS);
         }
     }
-    else if (strncmp(start, "*", 1) == 0) {
+    else if (start[0] == '*') {
         // printf("found special TIMES symbol\n");
         push_op(op_stack, TIMES);
     }
-    else if (strncmp(start, "/", 1) == 0) {
+    else if (start[0] == '/') {
         // printf("found special DIVIDE symbol\n");
         push_op(op_stack, DIVIDE); 
     }
-    else if (strncmp(start, "^", 1) == 0) {
+    else if (start[0] == '^') {
         // printf("found special BEXP symbol\n");
         push_op(op_stack, BEXP); 
     }
@@ -385,11 +389,12 @@ void handle_token(char * start, int len, struct Stack * stack, struct Op_Stack *
     }
 
     // parentheses
-    else if (strncmp(start, "(", 1) == 0) {
+    else if (start[0] == '(') {
         // printf("found special OPAR symbol\n");
         push_op(op_stack, OPAR);
+        new_open_paren = 1; 
     }
-    else if (strncmp(start, ")", 1) == 0) {
+    else if (start[0] == ')') {
         // printf("found special CPAR symbol\n");
         // pop all the elements off op stack until reach an open parenthesis
         // and use them to build a new node to push onto the node stack
@@ -446,6 +451,7 @@ void handle_token(char * start, int len, struct Stack * stack, struct Op_Stack *
             printf("bad input\n");
         }
     }
+    * open_paren = new_open_paren;
     // print_stack(stack);
     // print_op_stack(op_stack);
 }
@@ -463,17 +469,20 @@ NodePtr parse(char * str) {
     struct Op_Stack op_stack;
     op_stack.depth = 0;
 
+    // declare a variable to keep track of when a token is an open parenthesis
+    int open_paren = 0;
+
     while(1) {
         if (str[curr] == 0) {
             if (token < curr) {  // finishing a token
-                // print str[token, cur)
-                handle_token(& (str[token]), curr - token, & stack, & op_stack);
+                // print str[token, curr)
+                handle_token(& (str[token]), curr - token, & stack, & op_stack, & open_paren);
             }
             break;
         }
         else if (str[curr] == ' ') {  // finished a token
             // print str[token, curr)
-            handle_token(& (str[token]), curr - token, & stack, & op_stack);
+            handle_token(& (str[token]), curr - token, & stack, & op_stack, & open_paren);
             // increment curr and token
             curr++;
             token = curr;
@@ -493,9 +502,116 @@ NodePtr parse(char * str) {
     }
 }
 
+double eval(NodePtr node, char var, double val) {
+    switch(node->node_type) {
+        case NUMBER:
+            return (double) node->number;
+        case VARIABLE:
+            return val;
+        case BINARY_OP:
+            {
+            double eval_left = eval(node->left, var, val);
+            double eval_right = eval(node->right, var, val);
+            switch(node->binary_op) {
+                case BIN_OP_PLUS: 
+                    return (eval_left + eval_right); 
+                case BIN_OP_MINUS: 
+                    return (eval_left - eval_right);
+                case BIN_OP_TIMES:  
+                    return (eval_left * eval_right);
+                case BIN_OP_DIVIDE:  
+                    if (eval_right !=0) {
+                        return (eval_left / eval_right);
+                    }
+                    else {
+                        printf("Division by zero, cannot proceed\n");
+                        break;
+                    }
+                case BIN_OP_EXP: 
+                    return pow(eval_left, eval_right);
+                default: break;
+            }
+            }
+        case UNARY_OP:
+            {
+            double eval_only = eval(node->only, var, val);
+            switch(node->unary_op) {
+                case UN_OP_NEG: 
+                    return -eval_only;
+                case UN_OP_EXP: 
+                    return exp(eval_only);
+                case UN_OP_LOG: 
+                    if (eval_only > 0) {
+                        return log(eval_only);
+                    }
+                    else {
+                        printf("Value not in domain of log, cannot proceed\n");
+                        break;
+                    }
+                case UN_OP_SIN: 
+                    return sin(eval_only);
+                case UN_OP_COS: 
+                    return cos(eval_only);
+                default: break;
+            }
+            }
+    }
+    return 0;
+}
+
+int compare(NodePtr node1, NodePtr node2, char var) {
+    // srand(time(NULL));
+    unsigned int size = 5;  // number of inputs
+    double input[size];
+    double a = 10;  // to get boundaries of range for inputs
+    double tolerance = 1e-10;  // equality up to this much of a difference
+    int i;
+    for (i = 0; i < size; i++) {
+        input[i] = (((double) rand() / (double) (RAND_MAX)) * 2 * a) - a;
+        // printf("Random number %d is %f\n", i, input[i]);
+    }
+    double eval_node1, eval_node2;
+    for (i = 0; i < size; i++) {
+        // evaluations
+        eval_node1 = eval(node1, var, input[i]);
+        eval_node2 = eval(node2, var, input[i]);
+       
+        /* 
+        // print to test
+        printf("The nodes ");
+        print(node1);
+        printf(" and ");
+        print(node2);
+        printf(" evaluate to ");
+        printf("%f and %f respectively\n", eval_node1, eval_node2);
+        */
+
+        // comparison
+        if (fabs(eval_node1 - eval_node2) > tolerance) {
+            // in this case, the expressions do not evaluate to the same number
+           return 0;
+        }
+    } 
+    return 1;
+}
+
+int testdiff(NodePtr node, NodePtr known_deriv, char var) {
+    NodePtr computed_deriv = diff(node, var);
+    if (compare(computed_deriv, known_deriv, var)) {
+        return 1;
+    }
+    return 0;
+}
+
 void test() {
     // some sample nodes
+    NodePtr node_const = num(5); 
+    print(node_const);
+    printf("\n");
     NodePtr node = bin_op(num(5), var('x'), BIN_OP_MINUS);
+    print(node);
+    printf("\n");
+    NodePtr node1 = un_op(bin_op(var('x'), num(5), BIN_OP_MINUS), UN_OP_NEG);
     print(node);
     printf("\n");
     NodePtr test_node = bin_op(un_op(bin_op(bin_op(un_op(num(2), UN_OP_NEG),
@@ -507,6 +623,9 @@ void test() {
                                       BIN_OP_TIMES),
                                BIN_OP_MINUS);
     print(test_node);
+    printf("\n");
+    NodePtr test_cos0 = un_op(bin_op(num(10), var('x'), BIN_OP_TIMES), UN_OP_COS);
+    print(test_cos0);
     printf("\n");
     NodePtr test_cos = un_op(bin_op(bin_op(num(10), var('x'), 
                                            BIN_OP_TIMES), 
@@ -529,6 +648,9 @@ void test() {
     printf("\n");
 
     // test the copy function for nodes
+    NodePtr node_const_copy = copy(node_const);
+    print(node_const_copy);
+    printf("\n");
     NodePtr node_copy = copy(node);
     print(node_copy);
     printf("\n");
@@ -543,6 +665,9 @@ void test() {
     printf("\n");
 
     // test the differentation function
+    NodePtr diff_node_const = diff(node_const, 'x');
+    print(diff_node_const);
+    printf("\n");
     NodePtr diff_node = diff(node, 'x');
     print(diff_node);
     printf("\n");
@@ -587,16 +712,69 @@ void test() {
     printf("pushed to op stack: %d\n", CPAR);
     printf("Here is first pop from op stack: %d\n", pop_op(& os)); 
     printf("Here is second pop from op stack: %d\n", pop_op(& os));
+
+    // test the evaluation function
+    double val = 3.14;
+    char var = 'x';
+    double eval_node_const = eval(node_const, var, val);
+    printf("The expression ");
+    print(node_const);
+    printf(" evaluated at %c = %f is %f\n", var, val, eval_node_const); 
+    double eval_node = eval(node, var, val);
+    printf("The expression ");
+    print(node);
+    printf(" evaluated at %c = %f is %f\n", var, val, eval_node);
+    double eval_test_node = eval(test_node, var, val);
+    printf("The expression ");
+    print(test_node);
+    printf(" evaluated at %c = %f is %f\n", var, val, eval_test_node);
+    double eval_test_cos0 = eval(test_cos0, var, val);
+    printf("The expression ");
+    print(test_cos0);
+    printf(" evaluated at %c = %f is %f\n", var, val, eval_test_cos0);
+    double eval_test_cos = eval(test_cos, var, val);
+    printf("The expression ");
+    print(test_cos);
+    printf(" evaluated at %c = %f is %f\n", var, val, eval_test_cos);
     
+    // test comparison function
+    int comp = compare(node, node1, var);
+    printf("The nodes ");
+    print(node);
+    printf(" and ");
+    print(node1);
+    if (comp) {
+        printf(" are equal\n");
+    }
+    else {
+        printf(" are not equal\n");
+    }
+    comp = compare(test_node, test_cos0, var);
+    printf("The nodes ");
+    print(test_node);
+    printf(" and ");
+    print(test_cos0);
+    if (comp) {
+        printf(" are equal\n");
+    }
+    else {
+        printf(" are not equal\n");
+    }
+  
     // free all the nodes
+    free_node(node_const);
     free_node(node);
+    free_node(node1);
     free_node(test_node);
+    free_node(test_cos0);
     free_node(test_cos);
     free_node(test_sin);
+    free_node(node_const_copy);
     free_node(node_copy);
     free_node(node_copy2);
     free_node(node_copy3);
     free_node(node_copy4);
+    free_node(diff_node_const);
     free_node(diff_node);
     free_node(diff_node2);
     free_node(diff_node3);
@@ -604,21 +782,100 @@ void test() {
 }
     
 int main(int argc, char** argv){
-    // use parse function
-    NodePtr arg1 = parse(argv[1]);
-    printf("Your input is:\n");
-    print(arg1);
-    printf("\n");
+    // differenatiation command
+    if (argc == 4 && strcmp(argv[1], "-diff") == 0) {
+        // use parse function to convert second argument to node
+        NodePtr expression = parse(argv[2]);
+        printf("Your input is:\n");
+        print(expression);
+        printf("\n");
 
-    // convert second argument to char
-    char arg2 = 0;
-    if (strlen(argv[2]) == 1) {
-        arg2 = argv[2][0];
+        // convert third argument to char
+        char variable = 0;
+        if (strlen(argv[3]) == 1) {
+            variable = argv[3][0];
+        }
+
+        // differentiate 
+        printf("Its derivative with respect to %c is:\n", variable);
+        NodePtr derivative = diff(expression, variable);
+        print(derivative);
+        printf("\n\n");
+
+        free_node(expression);
+        free_node(derivative);
     }
-    // test differentiation on command line argument
-    printf("Its derivative with respect to %c is:\n", arg2);
-    print(diff(arg1, arg2));
-    printf("\n\n");
+   
+    // evaluation command
+    if (argc == 5 && strcmp(argv[1], "-eval") == 0) {
+        // use parse function to convert second argument to node
+        NodePtr expression = parse(argv[2]);
+  
+        // convert third argument to char
+        char variable = 0;
+        if (strlen(argv[3]) == 1) {
+            variable = argv[3][0];
+        }
+
+        // convert fourth argument to double
+        double value = 0;
+        value = atof(argv[4]);
+         
+        // evaluate
+        double evaluation = eval(expression, variable, value);
+        printf("The expression ");
+        print(expression);
+        printf(" evaluated at %c = %f is equal to %f\n\n", variable, value, evaluation);
+
+        free_node(expression);
+    }
+
+    // test derivative command
+    if (argc == 5 && strcmp(argv[1], "-test") == 0) {
+        // use parse function to convert second and third arguments to nodes
+        NodePtr expression = parse(argv[2]);
+        NodePtr known_derivative = parse(argv[3]);
+
+        // convert fourth argument to char
+        char variable = 0;
+        if (strlen(argv[4]) == 1) {
+            variable = argv[4][0];
+        }
+
+        // computer derivative of second argument
+        NodePtr computed_derivative = diff(expression, variable);
+
+        printf("The derivative with respect to %c of ", variable);
+        print(expression);
+        printf(" is\n");
+        print(computed_derivative);
+          
+        // compare computed derivative and known derivative
+        int comp = compare(computed_derivative, known_derivative, variable);
+        if (comp) {
+           printf("\nwhich is the same as ");
+        }
+        else {
+           printf("\nwhich is not the same as ");
+        }
+        print(known_derivative); 
+        printf("\n");
+
+        free_node(expression);
+        free_node(known_derivative);
+        free_node(computed_derivative);
+
+        return !comp; 
+    } 
+   
+    // none of the above
+    else {
+        printf("Command invalid. It should look like one of: \n");
+        printf("%s -diff <expression> <variable>\n", argv[0]);
+        printf("%s -eval <expression> <variable> <value>\n", argv[0]);
+        printf("%s -test <expression1> <expression2> <variable>\n", argv[0]);
+    } 
+    // test();
 
     return 0;
 }

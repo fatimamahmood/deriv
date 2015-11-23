@@ -1,16 +1,51 @@
 #!/bin/bash
 
-./deriv "( 6 )" x
-echo "Expected result is: \n0\n\n"
+fails=0
+successes=0
 
-./deriv "( 5 + x )" x
-echo "Expected result is: \n(0)+(1)\n\n"
+check_true () {
+    ./deriv -test "$1" "$2" x
+    if [ $? == 0 ]
+    then 
+        printf "matched, as hoped\n\n"
+        let "successes += 1"
+    else
+        printf "didn't match, but should have\n\n"
+        let "fails += 1"
+    fi
+}
+    
+check_false () {
+    ./deriv -test "$1" "$2" x
+    if [ $? == 1 ]
+    then
+        printf "didn't match, as hoped\n\n"
+        let "successes += 1"
+    else
+        printf "matched, but should not have\n\n"
+        let "fails += 1"
+    fi
+}
 
-./deriv "( x ^ 3 )" x
-echo "Expected result is: \n((3)*((x)^(2)))*(1)\n\n"
+check_true "( 6 )" "( 0 )"
 
-./deriv "( cos ( x ) )" x
-echo "Expected result is: \n(-(sin(x)))*(1)\n\n"
+check_false "( 7 )" "( 1 )"
 
-./deriv "( sin ( exp ( x * y ) ) )" x
-echo "Expected result is: \n(cos(exp((x)*(y))))*((((1)*(y))+((x)*(0)))*(exp((x)*(y))))\n\n"
+check_true "( 5 + x )" "( 1 )"
+
+check_false "( 5 - x )" "( 1 )"
+
+check_true "( x ^ 3 )" "( 3 * ( x ^ 2 ) )"
+
+check_false "( x ^ 4 )" "( 4 * x )"
+
+check_true "( cos ( x ) )" "( - ( sin ( x ) ) )"
+
+check_false "( - ( sin ( x ) ) )" "( cos ( x ) )"
+
+check_true "( sin ( exp ( x * 2 ) ) )" "( ( ( cos ( exp ( x * 2 ) ) ) * ( exp ( x * 2 ) ) ) * ( 2 ) )"
+
+check_false "( sin ( exp ( x * 2 ) ) )" "( ( cos ( exp ( x * 2 ) ) ) * ( exp ( x * 2 ) ) ) "
+
+echo "The number of successes is $successes"
+echo "The number of failures is $fails"

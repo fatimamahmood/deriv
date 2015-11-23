@@ -85,11 +85,20 @@ enum Unary_op To_Unary_op(enum Op op);
 // pushes/pops to/from the node stack and op stack
 // to be used when parsing mathematical expressions from command line
 // (implementing Dijsktra's shunting-yard algorithm)
-void handle_token(char * start, int len, struct Stack * stack, struct Op_Stack * op_stack);
+void handle_token(char * start, int len, struct Stack * stack, struct Op_Stack * op_stack, int * open_paren);
 
 // parses input string (math expression) from command line
 //  and returns node
 NodePtr parse(char * str);
 
+// evaluates node at a particular value of a variable
+double eval(NodePtr node, char var, double val); 
+
+// compares two nodes to see if they are equal
+int compare(NodePtr node1, NodePtr node2, char var); 
+
+// tests to see whether computed derivative of input node matches its known derivative
+int testdiff(NodePtr node, NodePtr known_deriv, char var);
+  
 // tests functions
 void test();
